@@ -1,9 +1,56 @@
-version: '3.9'
+version: '3.8'
+
 services:
-  apache:
-    image: httpd:latest
-    container_name: my-apache-app
+  frontend:
+    image: httpd:2.4-alpine
+    depends_on:
+      - backend
+    restart: on-failure
     ports:
-    - '80:80'
+      - "80:80"
     volumes:
-    - ./website:/usr/local/apache2/htdocs
+      - ./frontend/dist:/usr/local/apache2/htdocs
+    networks:
+      - frontend-to-backend
+  db:
+    image: mysql:5.7
+    restart: on-failure
+    ports:
+      - "3306:3306"
+    volumes:
+      - db-data:/var/lib/mysql
+    networks:
+      - backend-to-db
+    healthcheck:
+      test: ['CMD-SHELL', 'mysqladmin ping -h 127.0.0.1 --password="$$MYSQL_ROOT_PASSWORD" --silent']
+      interval: 3s
+      retries: 5
+      start_period: 30s
+  backend:
+    image: node:18.12.1-alpine
+    depends_on:
+      db:
+        condition: service_healthy
+    user: "node"
+    working_dir: /home/node/app
+    restart: on-failure
+    environment:
+      APP_PORT: 3333
+      DB_HOST: "db"
+    ports:
+      - "3333:3333"
+    volumes:
+      - ./backend:/home/node/app
+    networks:
+      - backend-to-db
+      - frontend-to-backend
+    command: "npm start"
+
+networks:
+  frontend-to-backend:
+    driver: bridge
+  backend-to-db:
+    driver: bridge
+
+volumes:
+  db-data:
